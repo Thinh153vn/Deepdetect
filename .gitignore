@@ -1,0 +1,19 @@
+# Bỏ qua các thư mục cache của Python
+__pycache__/
+*.pyc
+
+# Bỏ qua các thư mục dữ liệu và file được tạo tự động
+/uploads/
+/suspicious_frames/
+/training_data/
+/data/
+/dataset_raw/
+history.csv
+performance_report.png
+
+# Bỏ qua các file cấu hình của IDE
+.vscode/
+.idea/
+
+# Bỏ qua file môi trường Conda (nếu có)
+.conda/
