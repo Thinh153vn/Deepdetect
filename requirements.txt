@@ -1,15 +1,17 @@
 streamlit==1.35.0
 streamlit-option-menu==0.3.12
+
 --extra-index-url https://download.pytorch.org/whl/cpu
 torch==2.2.2+cpu
 torchvision==0.17.2+cpu
-opencv-python==4.8.0.76
+opencv-python-headless==4.8.0.76
 mediapipe==0.10.9
 pandas==2.1.4
 scikit-learn==1.4.2
-tqdm 
+tqdm
 timm==0.9.16
 grad-cam==1.5.0
 seaborn==0.13.2
 plotly-express==0.4.1
 facenet-pytorch
+streamlit-webrtc

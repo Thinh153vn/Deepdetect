@@ -8,6 +8,7 @@ import uuid
 import config
 import plotly.express as px
 import subprocess
+from streamlit_webrtc import webrtc_streamer, VideoTransformerBase, RTCConfiguration
 
 # Import các hàm chức năng từ các module đã tạo
 from app.detector import (
@@ -129,7 +130,6 @@ def page_home():
         with col1:
             st.markdown("##### 🖼️ File kết quả (đã tích hợp landmark)")
             if results["file_type"] == "image":
-                # SỬA LỖI Ở ĐÂY: Bỏ `use_container_width=True`
                 st.image(results["annotated_image_path"])
             else:
                 if results["annotated_image_path"] and os.path.exists(results["annotated_image_path"]):
@@ -139,7 +139,6 @@ def page_home():
         with col2:
             st.markdown("##### 🧠 Vùng AI chú ý (Grad-CAM)")
             if results["gradcam_path"] and os.path.exists(results["gradcam_path"]):
-                # SỬA LỖI Ở ĐÂY: Bỏ `use_container_width=True`
                 st.image(results["gradcam_path"])
             else:
                 st.warning("Không có ảnh Grad-CAM.")
@@ -160,32 +159,40 @@ def page_home():
             score_col1.metric("EfficientNet Score", f"{results['eff_score']:.2f}%")
             score_col2.metric("ViT Score", f"{results['vit_score']:.2f}%")
 
+# --- NÂNG CẤP TRANG REAL-TIME VỚI STREAMLIT-WEBRTC ---
+class DeepfakeVideoTransformer(VideoTransformerBase):
+    def __init__(self):
+        self.frame_count = 0
+
+    def recv(self, frame):
+        # Chuyển frame từ WebRTC sang dạng mà OpenCV có thể đọc được
+        img = frame.to_ndarray(format="bgr24")
+
+        # Gọi hàm xử lý AI của bạn
+        processed_img, label, confidence = process_realtime_frame_fast(img)
+        
+        # Lưu frame đáng ngờ sau mỗi 30 frame để tránh ghi đĩa liên tục
+        self.frame_count += 1
+        if self.frame_count % 30 == 0 and label == 'FAKE' and confidence >= config.SELF_TRAIN_THRESHOLD:
+            save_suspicious_frame(img)
+
+        # Chuyển frame đã xử lý trở lại dạng WebRTC để hiển thị
+        return processed_img
+
+
 def page_realtime():
     st.title("🎥 Real-time Deepfake Detection")
-    st.info("Tính năng này yêu cầu quyền truy cập webcam của bạn.")
-    
-    # CẢI TIẾN 2: TINH GỌN GIAO DIỆN REAL-TIME
-    run = st.checkbox("Bật Camera")
-    
-    if run:
-        st.markdown("##### 📷 Webcam Feed")
-        FRAME_WINDOW = st.image([])
-        cap = cv2.VideoCapture(0)
-        
-        while run:
-            ret, frame = cap.read()
-            if not ret: 
-                st.warning("Không thể truy cập camera. Vui lòng thử lại.")
-                break
-            
-            # Chỉ gọi hàm fast, đã bao gồm landmark và kết quả
-            display_frame, _, _ = process_realtime_frame_fast(frame)
-            
-            FRAME_WINDOW.image(cv2.cvtColor(display_frame, cv2.COLOR_BGR2RGB))
-        
-        cap.release()
-    else: 
-        st.info("Webcam đã tắt.")
+    st.info("Nhấn 'START' và cho phép trình duyệt truy cập camera của bạn.")
+
+    webrtc_streamer(
+        key="deepfake-detection",
+        video_transformer_factory=DeepfakeVideoTransformer,
+        rtc_configuration=RTCConfiguration({
+            "iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]
+        }),
+        media_stream_constraints={"video": True, "audio": False},
+        async_processing=True,
+    )
 
 def page_history():
     st.title("🗂️ Lịch sử các dự đoán")
@@ -210,13 +217,18 @@ def page_history():
 def page_admin():
     st.title("🔑 Admin Dashboard")
 
-    # CẢI TIẾN 5: ẨN THANH NHẬP MẬT KHẨU SAU KHI ĐĂNG NHẬP
     if 'admin_logged_in' not in st.session_state:
         st.session_state.admin_logged_in = False
 
     if not st.session_state.admin_logged_in:
+        # Kiểm tra xem secrets có tồn tại không trước khi truy cập
+        try:
+            correct_password = st.secrets.get("ADMIN_PASSWORD", "admin123")
+        except Exception:
+            correct_password = "admin123"
+
         password = st.text_input("Enter Admin Password", type="password")
-        if password == st.secrets.get("ADMIN_PASSWORD", "admin123"):
+        if password == correct_password:
             st.session_state.admin_logged_in = True
             st.rerun()
         elif password:
@@ -262,7 +274,6 @@ def page_admin():
                     st.divider()
 
 def page_about():
-    # CẢI TIẾN 4: CẬP NHẬT NỘI DUNG TAB ABOUT
     st.title("ℹ️ Giới thiệu về Dự án 'Faceless'")
     st.markdown("""
     **Faceless** là một dự án demo nhằm xây dựng một công cụ phát hiện deepfake mạnh mẽ và trực quan, 
