@@ -10,7 +10,6 @@ import plotly.express as px
 import subprocess
 
 # Import các hàm chức năng từ các module đã tạo
-# Loại bỏ import không cần thiết: analyze_facial_landmarks, process_realtime_frame_full_analysis
 from app.detector import (
     predict_image_ensemble,
     predict_video_ensemble,
@@ -100,6 +99,7 @@ def page_home():
                         return
 
                 st.session_state.results = results
+                # CẢI TIẾN 3: THAY ĐỔI MÀU THÔNG BÁO
                 log_prediction(
                     {
                         "filename": clean_filename,
@@ -122,13 +122,15 @@ def page_home():
         results = st.session_state.results
         st.success("Phân tích hoàn tất!")
 
+        # CẢI TIẾN 1: CÂN ĐỐI BỐ CỤC KẾT QUẢ TRONG 1 TRANG
         st.divider()
         st.subheader("Báo cáo Phân tích Trực quan")
         col1, col2 = st.columns(2)
         with col1:
             st.markdown("##### 🖼️ File kết quả (đã tích hợp landmark)")
             if results["file_type"] == "image":
-                st.image(results["annotated_image_path"], use_container_width=True)
+                # SỬA LỖI Ở ĐÂY: Bỏ `use_container_width=True`
+                st.image(results["annotated_image_path"])
             else:
                 if results["annotated_image_path"] and os.path.exists(results["annotated_image_path"]):
                     st.video(results["annotated_image_path"])
@@ -137,7 +139,8 @@ def page_home():
         with col2:
             st.markdown("##### 🧠 Vùng AI chú ý (Grad-CAM)")
             if results["gradcam_path"] and os.path.exists(results["gradcam_path"]):
-                st.image(results["gradcam_path"], use_container_width=True)
+                # SỬA LỖI Ở ĐÂY: Bỏ `use_container_width=True`
+                st.image(results["gradcam_path"])
             else:
                 st.warning("Không có ảnh Grad-CAM.")
 
@@ -161,6 +164,7 @@ def page_realtime():
     st.title("🎥 Real-time Deepfake Detection")
     st.info("Tính năng này yêu cầu quyền truy cập webcam của bạn.")
     
+    # CẢI TIẾN 2: TINH GỌN GIAO DIỆN REAL-TIME
     run = st.checkbox("Bật Camera")
     
     if run:
@@ -174,6 +178,7 @@ def page_realtime():
                 st.warning("Không thể truy cập camera. Vui lòng thử lại.")
                 break
             
+            # Chỉ gọi hàm fast, đã bao gồm landmark và kết quả
             display_frame, _, _ = process_realtime_frame_fast(frame)
             
             FRAME_WINDOW.image(cv2.cvtColor(display_frame, cv2.COLOR_BGR2RGB))
@@ -205,15 +210,13 @@ def page_history():
 def page_admin():
     st.title("🔑 Admin Dashboard")
 
-    # Đọc mật khẩu từ st.secrets
-    correct_password = st.secrets.get("ADMIN_PASSWORD", "admin123") # "admin123" là mật khẩu dự phòng nếu không có file secrets
-
+    # CẢI TIẾN 5: ẨN THANH NHẬP MẬT KHẨU SAU KHI ĐĂNG NHẬP
     if 'admin_logged_in' not in st.session_state:
         st.session_state.admin_logged_in = False
 
     if not st.session_state.admin_logged_in:
         password = st.text_input("Enter Admin Password", type="password")
-        if password == correct_password:
+        if password == st.secrets.get("ADMIN_PASSWORD", "admin123"):
             st.session_state.admin_logged_in = True
             st.rerun()
         elif password:
@@ -232,7 +235,7 @@ def page_admin():
                 st.info("Quá trình huấn luyện lại đã bắt đầu. Xem tiến trình trong cửa sổ console.")
                 st.warning("Sau khi hoàn tất, bạn cần cập nhật file config.py và KHỞI ĐỘNG LẠI ứng dụng.")
             except FileNotFoundError:
-                st.error("Lỗi: Không tìm thấy file 'retrain.py'. Vui lòng đảm bảo file này nằm ở thư mục gốc của dự án.")
+                st.error("Lỗi: Không tìm thấy file 'retrain.py'.")
 
         st.divider()
 
@@ -257,11 +260,9 @@ def page_admin():
                             st.toast(f"{filename} đã được chuyển vào training set (REAL).", icon="❌")
                             st.rerun()
                     st.divider()
-                
-    elif password:
-        st.error("Mật khẩu không chính xác.")
 
 def page_about():
+    # CẢI TIẾN 4: CẬP NHẬT NỘI DUNG TAB ABOUT
     st.title("ℹ️ Giới thiệu về Dự án 'Faceless'")
     st.markdown("""
     **Faceless** là một dự án demo nhằm xây dựng một công cụ phát hiện deepfake mạnh mẽ và trực quan, 
@@ -298,4 +299,3 @@ elif selected == "Admin":
     page_admin()
 elif selected == "About":
     page_about()
-
