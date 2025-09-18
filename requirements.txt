@@ -1,6 +1,7 @@
 streamlit==1.35.0
 streamlit-option-menu==0.3.12
-https://download.pytorch.org/whl/cpu
+
+--extra-index-url https://download.pytorch.org/whl/cpu
 torch==2.2.2+cpu
 torchvision==0.17.2+cpu
 opencv-python==4.8.0.76
