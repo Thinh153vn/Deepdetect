@@ -8,7 +8,8 @@ import uuid
 import config
 import plotly.express as px
 import subprocess
-from streamlit_webrtc import webrtc_streamer, VideoTransformerBase, RTCConfiguration
+import queue
+from streamlit_webrtc import webrtc_streamer, VideoTransformerBase, RTCConfiguration, WebRtcMode
 
 # Import các hàm chức năng từ các module đã tạo
 from app.detector import (
@@ -159,40 +160,70 @@ def page_home():
             score_col1.metric("EfficientNet Score", f"{results['eff_score']:.2f}%")
             score_col2.metric("ViT Score", f"{results['vit_score']:.2f}%")
 
-# --- NÂNG CẤP TRANG REAL-TIME VỚI STREAMLIT-WEBRTC ---
+# --- LỚP XỬ LÝ VIDEO CHO WEBRTC ---
 class DeepfakeVideoTransformer(VideoTransformerBase):
     def __init__(self):
         self.frame_count = 0
+        # Tạo một hàng đợi (queue) để lưu kết quả
+        self.result_queue = queue.Queue()
 
     def recv(self, frame):
-        # Chuyển frame từ WebRTC sang dạng mà OpenCV có thể đọc được
         img = frame.to_ndarray(format="bgr24")
-
-        # Gọi hàm xử lý AI của bạn
         processed_img, label, confidence = process_realtime_frame_fast(img)
         
-        # Lưu frame đáng ngờ sau mỗi 30 frame để tránh ghi đĩa liên tục
+        # Đặt kết quả vào hàng đợi để giao diện có thể lấy ra
+        self.result_queue.put((label, confidence))
+        
         self.frame_count += 1
         if self.frame_count % 30 == 0 and label == 'FAKE' and confidence >= config.SELF_TRAIN_THRESHOLD:
             save_suspicious_frame(img)
-
-        # Chuyển frame đã xử lý trở lại dạng WebRTC để hiển thị
+            
         return processed_img
 
-
+# --- TRANG REAL-TIME ĐÃ ĐƯỢC NÂNG CẤP HOÀN CHỈNH ---
 def page_realtime():
     st.title("🎥 Real-time Deepfake Detection")
     st.info("Nhấn 'START' và cho phép trình duyệt truy cập camera của bạn.")
 
-    webrtc_streamer(
-        key="deepfake-detection",
-        video_transformer_factory=DeepfakeVideoTransformer,
-        rtc_configuration=RTCConfiguration({
-            "iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]
-        }),
-        media_stream_constraints={"video": True, "audio": False},
-        async_processing=True,
-    )
+    col1, col2 = st.columns([3, 2]) # Chia cột, cột video lớn hơn
+
+    with col1:
+        # Component chính để hiển thị video
+        webrtc_ctx = webrtc_streamer(
+            key="deepfake-detection",
+            mode=WebRtcMode.SENDRECV,
+            video_processor_factory=DeepfakeVideoTransformer,
+            media_stream_constraints={"video": True, "audio": False},
+            async_processing=True,
+            rtc_configuration={"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]}
+        )
+
+    with col2:
+        st.subheader("📊 Thống kê Real-time")
+        # Tạo các khung trống để hiển thị kết quả
+        label_placeholder = st.empty()
+        confidence_placeholder = st.empty()
+
+    # Vòng lặp để cập nhật giao diện thống kê
+    if webrtc_ctx.state.playing and webrtc_ctx.video_processor:
+        while True:
+            try:
+                # Lấy kết quả mới nhất từ hàng đợi
+                label, confidence = webrtc_ctx.video_processor.result_queue.get(timeout=1.0)
+                
+                # Cập nhật các khung trống
+                if label == "FAKE":
+                    label_placeholder.metric("Kết quả", "FAKE", "🔴 Nguy cơ cao")
+                else:
+                    label_placeholder.metric("Kết quả", "REAL", "🟢 An toàn")
+                confidence_placeholder.metric("Độ tin cậy", f"{confidence:.2f}%")
+            except queue.Empty:
+                # Nếu không có kết quả mới, tiếp tục vòng lặp
+                pass
+            except Exception as e:
+                # Dừng vòng lặp nếu có lỗi
+                st.error(f"Đã xảy ra lỗi: {e}")
+                break
 
 def page_history():
     st.title("🗂️ Lịch sử các dự đoán")
@@ -221,7 +252,6 @@ def page_admin():
         st.session_state.admin_logged_in = False
 
     if not st.session_state.admin_logged_in:
-        # Kiểm tra xem secrets có tồn tại không trước khi truy cập
         try:
             correct_password = st.secrets.get("ADMIN_PASSWORD", "admin123")
         except Exception:
